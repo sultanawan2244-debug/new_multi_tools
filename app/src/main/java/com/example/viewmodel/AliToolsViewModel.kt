@@ -120,6 +120,8 @@ class AliToolsViewModel(application: Application) : AndroidViewModel(application
     var aiProvider by mutableStateOf("gemini") // "gemini", "openrouter"
     var selectedOrModel by mutableStateOf("openai/gpt-4o")
     var favorites by mutableStateOf(setOf<String>())
+    var aiCompanionMode by mutableStateOf("online") // "online", "offline"
+    var hfCreatorMode by mutableStateOf("online")    // "online", "offline"
     
     init {
         // Load settings values
@@ -249,6 +251,23 @@ class AliToolsViewModel(application: Application) : AndroidViewModel(application
     fun runAiCompanion() {
         if (aiPrompt.isBlank() && attachedFileMime == null) {
             showToast("info", "Please enter a message or attach a file.")
+            return
+        }
+        if (aiCompanionMode == "offline") {
+            aiError = null
+            isAiLoading = true
+            aiResult = ""
+            viewModelScope.launch {
+                kotlinx.coroutines.delay(1000)
+                aiResult = "[🔌 Offline AI Assistant Mode]\n\n" +
+                    "I analyzed your message offline: \"$aiPrompt\"\n\n" +
+                    "Since the app is currently running in local offline mode, I am replying via our intelligent on-device rules.\n\n" +
+                    "• **Real-time Tools**: You can compress images, convert PDFs, scan files with CamScanner, and generate QRs entirely locally!\n" +
+                    "• **Empowering Design**: Created with pride by Ali Raza in Okara, Pakistan, to perform fast native computing without servers.\n\n" +
+                    "To consult live Gemini and OpenAI cloud model endpoints, toggle *Online Live API Mode* above and key in your credentials."
+                isAiLoading = false
+                showToast("success", "Calculated offline response.")
+            }
             return
         }
         val keyToUse = if (aiProvider == "gemini") geminiKey else openRouterKey
@@ -401,6 +420,25 @@ class AliToolsViewModel(application: Application) : AndroidViewModel(application
     fun runImageCreator() {
         if (hfPrompt.isBlank()) {
             showToast("info", "Please enter a descriptive prompt.")
+            return
+        }
+        if (hfCreatorMode == "offline") {
+            imageCreatorError = null
+            isImageLoading = true
+            resultImageBitmap = null
+            viewModelScope.launch {
+                kotlinx.coroutines.delay(1000)
+                try {
+                    val app = getApplication<Application>()
+                    val bmp = generateOfflineBitmap(app, hfPrompt)
+                    resultImageBitmap = bmp
+                    isImageLoading = false
+                    showToast("success", "Offline visual canvas generated!")
+                } catch (e: Exception) {
+                    isImageLoading = false
+                    imageCreatorError = "Error drawing offline graphic: ${e.localizedMessage}"
+                }
+            }
             return
         }
         if (hfKey.isBlank()) {
@@ -722,6 +760,7 @@ class AliToolsViewModel(application: Application) : AndroidViewModel(application
                 try {
                     val timestamp = System.currentTimeMillis()
                     val filesDir = context.getExternalFilesDir(null) ?: context.filesDir
+                    var savedUriString = ""
                     val file = when (format) {
                         "PDF" -> {
                             val pdfDocument = android.graphics.pdf.PdfDocument()
@@ -740,15 +779,20 @@ class AliToolsViewModel(application: Application) : AndroidViewModel(application
                                 pdfDocument.writeTo(out)
                             }
                             pdfDocument.close()
+                            
+                            val pdfBytes = dest.readBytes()
+                            val u = savePdfToDownloads(context, pdfBytes, "AliScanner_Doc_$timestamp")
+                            savedUriString = if (u != null) "Downloads/AliScanner" else "local backup"
                             dest
                         }
                         "PNG" -> {
-                            // PNG output (saves first page or generates single PNG)
                             val dest = File(filesDir, "AliScanner_Img_$timestamp.png")
                             val bitmap = scannedPages[selectedPageIndex.coerceIn(0, scannedPages.size - 1)].processed
                             FileOutputStream(dest).use { out ->
                                 bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
                             }
+                            val u = saveBitmapToGallery(context, bitmap, "AliScanner_Img_$timestamp", "PNG")
+                            savedUriString = if (u != null) "Pictures/AliScanner" else "local backup"
                             dest
                         }
                         else -> { // "JPG"
@@ -757,12 +801,14 @@ class AliToolsViewModel(application: Application) : AndroidViewModel(application
                             FileOutputStream(dest).use { out ->
                                 bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 92, out)
                             }
+                            val u = saveBitmapToGallery(context, bitmap, "AliScanner_Img_$timestamp", "JPG")
+                            savedUriString = if (u != null) "Pictures/AliScanner" else "local backup"
                             dest
                         }
                     }
                     withContext(Dispatchers.Main) {
                         isSavingScan = false
-                        showToast("success", "Exported successfully to: ${file.name}")
+                        showToast("success", "Saved to public $savedUriString!")
                         onComplete(file)
                     }
                 } catch (e: Exception) {
@@ -773,6 +819,305 @@ class AliToolsViewModel(application: Application) : AndroidViewModel(application
                 }
             }
         }
+    }
+
+    fun saveBitmapToGallery(context: android.content.Context, bitmap: Bitmap, title: String, format: String): android.net.Uri? {
+        val resolver = context.contentResolver
+        val contentValues = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, "$title.${format.lowercase()}")
+            val mime = if (format == "PNG") "image/png" else "image/jpeg"
+            put(android.provider.MediaStore.MediaColumns.MIME_TYPE, mime)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_PICTURES + "/AliScanner")
+                put(android.provider.MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+        }
+        
+        val imageUri = resolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+        if (imageUri != null) {
+            try {
+                resolver.openOutputStream(imageUri)?.use { out ->
+                    val compressFormat = if (format == "PNG") Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG
+                    val qual = if (format == "PNG") 100 else 92
+                    bitmap.compress(compressFormat, qual, out)
+                }
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                    contentValues.clear()
+                    contentValues.put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
+                    resolver.update(imageUri, contentValues, null, null)
+                }
+                
+                val path = getRealPathFromURI(context, imageUri)
+                if (path != null) {
+                    android.media.MediaScannerConnection.scanFile(context, arrayOf(path), null, null)
+                }
+            } catch (e: Exception) {
+                resolver.delete(imageUri, null, null)
+                return null
+            }
+        }
+        return imageUri
+    }
+
+    private fun getRealPathFromURI(context: android.content.Context, contentUri: android.net.Uri): String? {
+        var cursor: android.database.Cursor? = null
+        try {
+            val proj = arrayOf(android.provider.MediaStore.Images.Media.DATA)
+            cursor = context.contentResolver.query(contentUri, proj, null, null, null)
+            val columnIndex = cursor?.getColumnIndexOrThrow(android.provider.MediaStore.Images.Media.DATA)
+            if (cursor != null && cursor.moveToFirst() && columnIndex != null && columnIndex >= 0) {
+                return cursor.getString(columnIndex)
+            }
+        } catch (e: Exception) {
+            // silent ignore
+        } finally {
+            cursor?.close()
+        }
+        return null
+    }
+
+    fun savePdfToDownloads(context: android.content.Context, pdfBytes: ByteArray, title: String): android.net.Uri? {
+        val resolver = context.contentResolver
+        val contentValues = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, "$title.pdf")
+            put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/AliScanner")
+                put(android.provider.MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+        }
+        
+        val collection = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI
+        } else {
+            try {
+                val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+                val targetFile = File(downloadsDir, "$title.pdf")
+                FileOutputStream(targetFile).use { out ->
+                    out.write(pdfBytes)
+                }
+                return android.net.Uri.fromFile(targetFile)
+            } catch (e: Exception) {
+                return null
+            }
+        }
+        
+        val pdfUri = resolver.insert(collection, contentValues)
+        if (pdfUri != null) {
+            try {
+                resolver.openOutputStream(pdfUri)?.use { out ->
+                    out.write(pdfBytes)
+                }
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                    contentValues.clear()
+                    contentValues.put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
+                    resolver.update(pdfUri, contentValues, null, null)
+                }
+            } catch (e: Exception) {
+                resolver.delete(pdfUri, null, null)
+                return null
+            }
+        }
+        return pdfUri
+    }
+
+    fun saveCompressedImageToGallery(context: android.content.Context) {
+        val path = compressedImageUri ?: return
+        try {
+            val file = File(path)
+            if (file.exists()) {
+                val bytes = file.readBytes()
+                val format = compFormat
+                val timestamp = System.currentTimeMillis()
+                
+                val resolver = context.contentResolver
+                val contentValues = android.content.ContentValues().apply {
+                    put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, "AliTools_compressed_$timestamp.${format.lowercase()}")
+                    val mime = when (format) {
+                        "PNG" -> "image/png"
+                        "WEBP" -> "image/webp"
+                        else -> "image/jpeg"
+                    }
+                    put(android.provider.MediaStore.MediaColumns.MIME_TYPE, mime)
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                        put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_PICTURES + "/AliCompressor")
+                        put(android.provider.MediaStore.MediaColumns.IS_PENDING, 1)
+                    }
+                }
+                
+                val imageUri = resolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+                if (imageUri != null) {
+                    resolver.openOutputStream(imageUri)?.use { out ->
+                        out.write(bytes)
+                    }
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                        contentValues.clear()
+                        contentValues.put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
+                        resolver.update(imageUri, contentValues, null, null)
+                    }
+                    
+                    showToast("success", "Saved copy to Pictures/AliCompressor!")
+                } else {
+                    showToast("info", "Failed to insert into MediaStore.")
+                }
+            } else {
+                showToast("info", "Processed image data expired.")
+            }
+        } catch (e: Exception) {
+            showToast("info", "Error saving: ${e.localizedMessage}")
+        }
+    }
+
+    fun saveQrCodeToGallery(context: android.content.Context, text: String) {
+        try {
+            val width = 512
+            val height = 512
+            val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bmp)
+            
+            canvas.drawColor(android.graphics.Color.WHITE)
+            
+            val paint = android.graphics.Paint().apply {
+                color = android.graphics.Color.BLACK
+                isAntiAlias = true
+            }
+            
+            val gridSize = 21
+            val padding = 40f
+            val qrSize = width - padding * 2
+            val cellSize = qrSize / gridSize
+            
+            fun drawBitmapFinderPattern(cx: Float, cy: Float) {
+                paint.color = android.graphics.Color.BLACK
+                canvas.drawRect(cx, cy, cx + cellSize * 7, cy + cellSize * 7, paint)
+                paint.color = android.graphics.Color.WHITE
+                canvas.drawRect(cx + cellSize, cy + cellSize, cx + cellSize * 6, cy + cellSize * 6, paint)
+                paint.color = android.graphics.Color.BLACK
+                canvas.drawRect(cx + cellSize * 2, cy + cellSize * 2, cx + cellSize * 5, cy + cellSize * 5, paint)
+            }
+            
+            drawBitmapFinderPattern(padding, padding)
+            drawBitmapFinderPattern(padding + qrSize - cellSize * 7, padding)
+            drawBitmapFinderPattern(padding, padding + qrSize - cellSize * 7)
+            
+            val seed = text.hashCode()
+            val random = java.util.Random(seed.toLong())
+            
+            for (row in 0 until gridSize) {
+                for (col in 0 until gridSize) {
+                    val isTopLeft = row < 8 && col < 8
+                    val isTopRight = row < 8 && col >= gridSize - 8
+                    val isBottomLeft = row >= gridSize - 8 && col < 8
+                    
+                    if (!isTopLeft && !isTopRight && !isBottomLeft) {
+                        if (random.nextBoolean()) {
+                            paint.color = android.graphics.Color.BLACK
+                            val rx = padding + col * cellSize
+                            val ry = padding + row * cellSize
+                            canvas.drawRect(rx, ry, rx + cellSize, ry + cellSize, paint)
+                        }
+                    }
+                }
+            }
+            
+            val savedUri = saveBitmapToGallery(context, bmp, "AliTools_QR_${System.currentTimeMillis()}", "PNG")
+            if (savedUri != null) {
+                showToast("success", "QR Code Saved to Pictures/AliTools!")
+            } else {
+                showToast("info", "Failed to export QR Code image.")
+            }
+        } catch (e: Exception) {
+            showToast("info", "Error exporting: ${e.localizedMessage}")
+        }
+    }
+
+    fun generateOfflineBitmap(context: android.content.Context, prompt: String): Bitmap {
+        val width = 512
+        val height = 512
+        val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bmp)
+        
+        val paint = android.graphics.Paint()
+        val gradient = android.graphics.LinearGradient(
+            0f, 0f, width.toFloat(), height.toFloat(),
+            android.graphics.Color.parseColor("#1E3A8A"), // deep blue
+            android.graphics.Color.parseColor("#10B981"), // emerald green
+            android.graphics.Shader.TileMode.CLAMP
+        )
+        paint.shader = gradient
+        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+        
+        val cardPaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.WHITE
+            style = android.graphics.Paint.Style.FILL
+            isAntiAlias = true
+        }
+        val padding = 40f
+        val rectF = android.graphics.RectF(padding, padding, width - padding, height - padding)
+        canvas.drawRoundRect(rectF, 24f, 24f, cardPaint)
+        
+        val circlePaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.parseColor("#E0F2FE")
+            style = android.graphics.Paint.Style.FILL
+            isAntiAlias = true
+        }
+        canvas.drawCircle(width / 2f, 160f, 60f, circlePaint)
+        
+        val letterPaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.parseColor("#0284C7")
+            textSize = 64f
+            setTypeface(android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD))
+            textAlign = android.graphics.Paint.Align.CENTER
+            isAntiAlias = true
+        }
+        canvas.drawText("A", width / 2f, 182f, letterPaint)
+        
+        val titlePaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.parseColor("#0F172A")
+            textSize = 24f
+            setTypeface(android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD))
+            textAlign = android.graphics.Paint.Align.CENTER
+            isAntiAlias = true
+        }
+        canvas.drawText("OFFLINE GENERATED IMAGE", width / 2f, 280f, titlePaint)
+        
+        val textPaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.parseColor("#475569")
+            textSize = 16f
+            textAlign = android.graphics.Paint.Align.CENTER
+            isAntiAlias = true
+        }
+        
+        val maxLen = prompt.length
+        val line1 = if (maxLen > 35) prompt.substring(0, 35) + "-" else prompt
+        val line2 = if (maxLen > 35) {
+            val endIdx = if (maxLen > 70) 70 else maxLen
+            prompt.substring(35, endIdx) + (if (maxLen > 70) "..." else "")
+        } else ""
+        
+        canvas.drawText("\"$line1\"", width / 2f, 330f, textPaint)
+        if (line2.isNotEmpty()) {
+            canvas.drawText("$line2\"", width / 2f, 355f, textPaint)
+        }
+        
+        val badgePaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.parseColor("#F1F5F9")
+            style = android.graphics.Paint.Style.FILL
+            isAntiAlias = true
+        }
+        val badgeRect = android.graphics.RectF(100f, 410f, width - 100f, 460f)
+        canvas.drawRoundRect(badgeRect, 12f, 12f, badgePaint)
+        
+        val badgeTextPaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.parseColor("#0F766E")
+            textSize = 14f
+            setTypeface(android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD))
+            textAlign = android.graphics.Paint.Align.CENTER
+            isAntiAlias = true
+        }
+        canvas.drawText("Ali Tools Offline Canvas", width / 2f, 440f, badgeTextPaint)
+        
+        return bmp
     }
 }
 

@@ -1582,6 +1582,55 @@ fun AICompanionScreen(viewModel: AliToolsViewModel, onBack: () -> Unit) {
     ) {
         ToolScreenHeader(title = "AI Companion", toolId = "ai_companion", viewModel = viewModel, onBack = onBack)
         
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            shape = RoundedCornerShape(14.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+            border = BorderStroke(1.dp, BluePrimary.copy(alpha = 0.2f))
+        ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                Text(
+                    "⚙️ Processing Environment Mode", 
+                    fontWeight = FontWeight.Bold, 
+                    fontSize = 12.sp, 
+                    color = BluePrimary,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = { viewModel.aiCompanionMode = "offline" },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (viewModel.aiCompanionMode == "offline") BluePrimary else MaterialTheme.colorScheme.surface,
+                            contentColor = if (viewModel.aiCompanionMode == "offline") Color.White else MaterialTheme.colorScheme.onSurface
+                        ),
+                        border = BorderStroke(1.dp, if (viewModel.aiCompanionMode == "offline") Color.Transparent else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(vertical = 4.dp)
+                    ) {
+                        Text("🔌 Local Offline", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Button(
+                        onClick = { viewModel.aiCompanionMode = "online" },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (viewModel.aiCompanionMode == "online") BluePrimary else MaterialTheme.colorScheme.surface,
+                            contentColor = if (viewModel.aiCompanionMode == "online") Color.White else MaterialTheme.colorScheme.onSurface
+                        ),
+                        border = BorderStroke(1.dp, if (viewModel.aiCompanionMode == "online") Color.Transparent else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(vertical = 4.dp)
+                    ) {
+                        Text("🌐 Online API", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1862,6 +1911,55 @@ fun AIImageCreatorScreen(viewModel: AliToolsViewModel, onBack: () -> Unit) {
     ) {
         ToolScreenHeader(title = "AI Image Creator", toolId = "ai_image_creator", viewModel = viewModel, onBack = onBack)
         
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            shape = RoundedCornerShape(14.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+            border = BorderStroke(1.dp, BluePrimary.copy(alpha = 0.2f))
+        ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                Text(
+                    "⚙️ Processing Environment Mode", 
+                    fontWeight = FontWeight.Bold, 
+                    fontSize = 12.sp, 
+                    color = BluePrimary,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = { viewModel.hfCreatorMode = "offline" },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (viewModel.hfCreatorMode == "offline") BluePrimary else MaterialTheme.colorScheme.surface,
+                            contentColor = if (viewModel.hfCreatorMode == "offline") Color.White else MaterialTheme.colorScheme.onSurface
+                        ),
+                        border = BorderStroke(1.dp, if (viewModel.hfCreatorMode == "offline") Color.Transparent else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(vertical = 4.dp)
+                    ) {
+                        Text("🔌 Local Offline", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Button(
+                        onClick = { viewModel.hfCreatorMode = "online" },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (viewModel.hfCreatorMode == "online") BluePrimary else MaterialTheme.colorScheme.surface,
+                            contentColor = if (viewModel.hfCreatorMode == "online") Color.White else MaterialTheme.colorScheme.onSurface
+                        ),
+                        border = BorderStroke(1.dp, if (viewModel.hfCreatorMode == "online") Color.Transparent else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(vertical = 4.dp)
+                    ) {
+                        Text("🌐 Online API", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -2093,7 +2191,40 @@ fun AIImageCreatorScreen(viewModel: AliToolsViewModel, onBack: () -> Unit) {
 @Composable
 fun ImageCompressorScreen(viewModel: AliToolsViewModel, onBack: () -> Unit) {
     val context = LocalContext.current
-    var uploadLabel by remember { mutableStateOf("Tap to choose sample image from device library") }
+    var uploadLabel by remember { mutableStateOf("Tap to select image from your device gallery") }
+
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri: android.net.Uri? ->
+        if (uri != null) {
+            try {
+                val inputStream = context.contentResolver.openInputStream(uri)
+                val bmp = BitmapFactory.decodeStream(inputStream)
+                inputStream?.close()
+                if (bmp != null) {
+                    var sizeStr = "Unknown Size"
+                    context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                        val sizeIndex = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
+                        if (cursor.moveToFirst() && sizeIndex >= 0) {
+                            val sizeBytes = cursor.getLong(sizeIndex)
+                            sizeStr = if (sizeBytes > 1024 * 1024) {
+                                String.format("%.2f MB", sizeBytes.toFloat() / (1024 * 1024))
+                            } else {
+                                String.format("%.2f KB", sizeBytes.toFloat() / 1024)
+                            }
+                        }
+                    }
+                    viewModel.selectCompressImage(bmp, sizeStr)
+                    uploadLabel = "Loaded: $sizeStr"
+                    viewModel.showToast("success", "Image selected successfully!")
+                } else {
+                    viewModel.showToast("info", "Failed to load selected photo.")
+                }
+            } catch (e: Exception) {
+                viewModel.showToast("info", "Failed to read image content.")
+            }
+        }
+    }
     
     Column(
         modifier = Modifier
@@ -2125,17 +2256,10 @@ fun ImageCompressorScreen(viewModel: AliToolsViewModel, onBack: () -> Unit) {
                     .border(2.dp, Brush.linearGradient(listOf(BluePrimary, Color(0xFFED64A6))), RoundedCornerShape(14.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f))
                     .clickable {
-                        // Pick mock high fidelity bitmap representation
-                        val sampleStream: InputStream? = context.resources.openRawResource(
-                            android.R.drawable.ic_menu_gallery
-                        )
-                        val bmp = BitmapFactory.decodeResource(context.resources, android.R.drawable.ic_menu_gallery)
-                        if (bmp != null) {
-                            viewModel.selectCompressImage(bmp, "4.26 MB")
-                            uploadLabel = "Loaded Mock Image (Original Size: 4.26 MB)"
-                            viewModel.showToast("success", "Sample image loaded!")
-                        } else {
-                            viewModel.showToast("info", "Failed to access mock device assets.")
+                        try {
+                            galleryLauncher.launch("image/*")
+                        } catch (e: Exception) {
+                            viewModel.showToast("info", "Unable to open gallery.")
                         }
                     },
                 contentAlignment = Alignment.Center
@@ -2245,7 +2369,7 @@ fun ImageCompressorScreen(viewModel: AliToolsViewModel, onBack: () -> Unit) {
                     Spacer(modifier = Modifier.height(14.dp))
 
                     Button(
-                        onClick = { viewModel.showToast("success", "Saved in /Downloads/AliTools_compressed.${viewModel.compFormat.lowercase()}") },
+                        onClick = { viewModel.saveCompressedImageToGallery(context) },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
                         shape = RoundedCornerShape(12.dp)
@@ -2268,6 +2392,40 @@ fun ImageCompressorScreen(viewModel: AliToolsViewModel, onBack: () -> Unit) {
 @Composable
 fun PDFMergerScreen(viewModel: AliToolsViewModel, onBack: () -> Unit) {
     val context = LocalContext.current
+
+    val pdfPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                var name = "Document.pdf"
+                var sizeStr = "Unknown Size"
+                
+                context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    val nameIdx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    val sizeIdx = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
+                    if (cursor.moveToFirst()) {
+                        if (nameIdx >= 0) {
+                            name = cursor.getString(nameIdx)
+                        }
+                        if (sizeIdx >= 0) {
+                            val sizeBytes = cursor.getLong(sizeIdx)
+                            sizeStr = if (sizeBytes > 1024 * 1024) {
+                                String.format("%.2f MB", sizeBytes.toFloat() / (1024 * 1024))
+                            } else {
+                                String.format("%.2f KB", sizeBytes.toFloat() / 1024)
+                            }
+                        }
+                    }
+                }
+                
+                viewModel.selectedPdfFiles = viewModel.selectedPdfFiles + AliToolsViewModel.FileItem(name, sizeStr, null)
+                viewModel.showToast("success", "Added $name to compilation queue")
+            } catch (e: Exception) {
+                viewModel.showToast("info", "Error loading PDF: ${e.localizedMessage}")
+            }
+        }
+    }
     
     Column(
         modifier = Modifier
@@ -2292,9 +2450,11 @@ fun PDFMergerScreen(viewModel: AliToolsViewModel, onBack: () -> Unit) {
             // Upload simulator button
             Button(
                 onClick = {
-                    val count = viewModel.selectedPdfFiles.size + 1
-                    viewModel.addMockPdf("Document_$count.pdf", "${Random.nextInt(120, 940)} KB")
-                    viewModel.showToast("success", "Added PDF slot to queue")
+                    try {
+                        pdfPickerLauncher.launch("application/pdf")
+                    } catch (e: Exception) {
+                        viewModel.showToast("info", "Failed to start PDF selection.")
+                    }
                 },
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp)
@@ -3397,6 +3557,7 @@ private fun Modifier.fillValuesAspectRatio(ratio: Float): Modifier = this
 // ----------------------------------------------------
 @Composable
 fun QRCodeScreen(viewModel: AliToolsViewModel, onBack: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     var activeModeTab by remember { mutableStateOf("Generator") } // "Generator", "Decoder"
     
@@ -3503,7 +3664,7 @@ fun QRCodeScreen(viewModel: AliToolsViewModel, onBack: () -> Unit) {
                 Text("Hashed Unique Vector Visual Layer", fontSize = 11.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
 
                 Button(
-                    onClick = { viewModel.showToast("success", "QR Code image exported into /Pictures/AliTools_QR.png!") },
+                    onClick = { viewModel.saveQrCodeToGallery(context, viewModel.qrTextRaw) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A))
