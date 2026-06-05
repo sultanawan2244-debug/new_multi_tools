@@ -1,0 +1,6 @@
+ {
+  "name": "Ali Tools",
+  "description": "Your Free Online Toolkit — 140+ offline image, PDF, and text converters plus AI features.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
