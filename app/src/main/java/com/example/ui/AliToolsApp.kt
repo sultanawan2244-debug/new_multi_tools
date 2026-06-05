@@ -3359,8 +3359,10 @@ fun CamScannerScreen(viewModel: AliToolsViewModel, onBack: () -> Unit) {
                         fontSize = 13.sp
                     )
                     Spacer(modifier = Modifier.height(4.dp))
+                    val isPdf = exportedFileResult?.name?.endsWith(".pdf", ignoreCase = true) == true
+                    val folderName = if (isPdf) "Downloads/AliScanner" else "Pictures/AliScanner"
                     Text(
-                        text = "Folder: ${exportedFileResult?.parent}",
+                        text = "Folder: $folderName (Saved to Gallery / Media Storage)",
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                     )
